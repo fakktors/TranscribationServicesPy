@@ -1,26 +1,23 @@
-# yotubeAgent — YouTube-видео → транскрипт
+# TranscribationServicesPy — YouTube video → transcript
 
-Конвейер транскрибации YouTube-видео: Whisper через MLX (Apple Silicon) +
-разделение говорящих (pyannote) → Markdown.
+Transcription pipeline: **Whisper via MLX** (Apple Silicon) + **pyannote** speaker diarization → Markdown.
 
 ```
 url → download → transcribe → diarize → markdown
 ```
 
-| Стадия | Что делает | Артефакты в `work/<video_id>/` |
+| Stage | What it does | Artifacts in `work/<video_id>/` |
 |---|---|---|
-| `download` | yt-dlp: аудио (16 кГц моно WAV) + метаданные видео | `audio.wav`, `info.json` |
-| `transcribe` | Whisper (MLX), автоопределение языка, переключения ru/en | `segments.json` |
-| `diarize` | pyannote/speaker-diarization-3.1 (нужен HF-токен; без токена стадия **пропускается**) | `speakers.json` |
-| `markdown` | финальный транскрипт | `transcripts/<video_id>.md` |
+| `download` | yt-dlp: audio (16 kHz mono WAV) + video metadata | `audio.wav`, `info.json` |
+| `transcribe` | Whisper (MLX), auto language detection, ru/en switching | `segments.json` |
+| `diarize` | pyannote/speaker-diarization-3.1 (needs HF token; **skipped** without one) | `speakers.json` |
+| `markdown` | final transcript | `transcripts/<video_id>.md` |
 
-Состояние задачи — `work/<video_id>/state.json`. Каждая стадия сохраняется на
-диск, поэтому **повторный запуск продолжает с последнего завершённого этапа**,
-а не начинает всё заново.
+Task state lives in `work/<video_id>/state.json`: each stage is persisted, so a re-run **resumes from the last completed stage** instead of starting over.
 
-## Установка
+## Setup
 
-Рекомендуется Apple Silicon (MLX использует GPU). ffmpeg обязателен:
+Apple Silicon recommended (MLX uses the GPU). ffmpeg is required:
 
 ```bash
 brew install ffmpeg
@@ -29,60 +26,40 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Опционально: для разделения говорящих
-export HF_TOKEN=...   # и разовое согласование доступа к pyannote/speaker-diarization-3.1
+# Optional, for speaker diarization:
+export HF_TOKEN=...   # plus one-time access agreement for pyannote/speaker-diarization-3.1 on Hugging Face
 ```
 
-Без HF-токена конвейер работает, а стадия `diarize` просто пропускается
-(маркируется `skipped`); при повторном запуске с токеном стадия выполнится.
+Without an HF token the pipeline still works — the `diarize` stage is skipped (marked `skipped`) and will run on the next launch with a token.
 
-## Использование
+## Usage
 
 ```bash
-python tools/fetch_transcript.py "<youtube_url>" [language] [варианты]
+python tools/fetch_transcript.py "<youtube_url>" [language] [options]
 ```
 
-- `language` — `ru` / `en` (без аргумента — автоопределение)
-
-Варианты:
-
-- `--model NAME` — модель Whisper (по умолчанию `mlx-community/whisper-large-v3-turbo`)
-- `--prompt "терм1, терм2"` — словарь терминов как подсказка модели (подсказка,
-  а не команда: термин попадёт в текст только если он есть в аудио)
-- `--no-diarize` — не делать разделение говорящих
-- `--allow-long` — разрешить видео длиннее часа (по умолчанию ограничено)
-- `--stop STAGE` — остановиться после стадии: `download | transcribe | diarize | markdown`
-- `--reset` — начать задачу заново (очистить `work/<video_id>/`)
-- `--uncertain T` — порог уверенности для пометки `(?слово?)` (по умолчанию `0.5`)
-
-Примеры:
+- `language` — `ru` / `en` (default: auto-detect)
+- `--model NAME` — Whisper model (default `mlx-community/whisper-large-v3-mlx`)
+- `--prompt "term1, term2"` — vocabulary hint for the model (a hint, not a command: a term appears in the text only if it is actually in the audio)
+- `--no-diarize` — skip speaker diarization
+- `--allow-long` — allow videos longer than 1 hour (the limit applies by default)
+- `--stop STAGE` — stop after: `download | transcribe | diarize | markdown`
+- `--reset` — start over (clears `work/<video_id>/`)
+- `--uncertain T` — confidence threshold for `(?word?)` marks (default `0.5`)
 
 ```bash
 python tools/fetch_transcript.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-python tools/fetch_transcript.py "https://www.youtube.com/watch?v=..." ru
-python tools/fetch_transcript.py "https://youtu.be/..." --model mlx-community/whisper-large-v3
+python tools/fetch_transcript.py "https://youtu.be/..." ru --allow-long
 ```
 
-URL в командной строке заключайте в кавычки — символы `?`, `=`, `&`
-иначе интерпретируются оболочкой.
+Quote the URL — otherwise `?`, `=`, `&` are interpreted by the shell.
 
-## Вывод
+On success the script prints `OK <path to transcripts/<video_id>.md>`; on failure `ERROR <stage>: <message>` with exit code 1 — re-run to resume from that stage.
 
-- Успех: `OK <путь к transcripts/<video_id>.md>`
-- Ошибка: `ERROR <стадия>: <сообщение>`, код выхода `1` (повторный запуск
-  продолжит с этой стадии)
+## Transcript format
 
-## 📄 Формат транскрипта
-
-Markdown: название, ссылка, метаданные (модель, язык, длительность, число
-говорящих). Далее — абзацы:
-
-- абзац = реплика одного говорящего (без diarize — блоки по 30 сегментов),
-  каждый сегмент начинается с тайм-кода `[мм:сс]`
-- слова с низкой уверенностью распознавания помечаются `(?слово?)`
-- сегмент, передекодированный в другом языке, помечается `(en)` / `(ru)`
+Markdown: title, link, metadata (model, language, duration, speaker count), then paragraphs — one per speaker turn (without diarization: blocks of 30 segments). Each segment starts with an `[mm:ss]` timestamp; low-confidence words are marked `(?word?)`; a segment re-decoded in a different language is marked `(en)` / `(ru)`.
 
 ## Claude Code
 
-Команда `/practices <url>` (`.claude/commands/practices.md`) превращает видео
-в документ best practices по тексту транскрипта.
+The `/practices <url>` command (`.claude/commands/practices.md`) turns a video into a best-practices document from its transcript.
