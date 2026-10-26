@@ -1,11 +1,7 @@
-# Рабочие данные конвейера tools/fetch_transcript.py (аудио, состояния задач)
 work/
-
-# Claude Code
+transcripts/
 .claude/
-
-# Виртуальное окружение (1.3 ГБ; содержимое уже игнорируется .venv/.gitignore)
 .venv/
-
-# macOS
 .DS_Store
+__pycache__/
+*.pyc
