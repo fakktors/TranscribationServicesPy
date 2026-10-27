@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-MAX_DURATION = 3600  # первая версия принимает видео длиной до часа
+MAX_DURATION = 3600  # videos up to 1 hour
 
 AUDIO_EXTS = (".m4a", ".webm", ".mp3", ".opus", ".aac", ".flac", ".mp4")
 
@@ -19,7 +19,7 @@ def _yt_dlp() -> list[str]:
 
 
 def extract_video_id(url: str) -> str:
-    """ID видео из ссылки (без сети); для не-YouTube ссылок — хэш."""
+    """Video id from the URL (no network); non-YouTube links get a hash."""
     m = re.search(r"(?:v=|youtu\.be/|/shorts/|/embed/|/live/)([A-Za-z0-9_-]{6,})", url)
     if m:
         return m.group(1)
@@ -27,22 +27,22 @@ def extract_video_id(url: str) -> str:
 
 
 def fetch_metadata(url: str, info_file: Path, allow_long: bool = False) -> dict:
-    """Метаданные видео: название, длительность, главы (chapters)."""
+    """Video metadata: title, duration, chapters."""
     cmd = _yt_dlp() + ["--no-playlist", "--skip-download", "-J", url]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(
-            "yt-dlp не смог получить информацию о видео: " + (result.stderr or "").strip()[-400:]
+            "yt-dlp failed to fetch video info: " + (result.stderr or "").strip()[-400:]
         )
     try:
         info = json.loads(result.stdout)
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"yt-dlp вернул некорректный JSON: {e}") from e
+        raise RuntimeError(f"yt-dlp returned invalid JSON: {e}") from e
     duration = info.get("duration")
     if duration and duration > MAX_DURATION and not allow_long:
         raise RuntimeError(
-            f"Видео длится {int(duration) // 60} мин — дольше часа. "
-            "Первая версия поддерживает видео до 1 часа; продолжите с флагом --allow-long"
+            f"Video is {int(duration) // 60} min long — over the 1-hour limit; "
+            "continue with --allow-long"
         )
     info_file.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
     return info
@@ -56,12 +56,12 @@ def _find_downloaded_audio(work_dir: Path) -> Path | None:
 
 
 def fetch_audio(url: str, work_dir: Path) -> Path:
-    """Скачивает аудио и превращает в 16 кГц моно WAV (формат для Whisper и pyannote)."""
+    """Downloads audio and converts it to 16 kHz mono WAV (input format for Whisper and pyannote)."""
     wav = work_dir / "audio.wav"
     if wav.exists() and wav.stat().st_size > 100_000:
-        return wav  # этап уже был завершён (возобновление после сбоя)
+        return wav  # stage already completed (resume after a failure)
     if not shutil.which("ffmpeg"):
-        raise RuntimeError("Не найден ffmpeg — установите: brew install ffmpeg")
+        raise RuntimeError("ffmpeg not found — install it: brew install ffmpeg")
 
     src = _find_downloaded_audio(work_dir)
     if src is None:
@@ -76,11 +76,11 @@ def fetch_audio(url: str, work_dir: Path) -> Path:
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(
-                "yt-dlp не смог скачать аудио: " + (result.stderr or "").strip()[-400:]
+                "yt-dlp failed to download audio: " + (result.stderr or "").strip()[-400:]
             )
         src = _find_downloaded_audio(work_dir)
         if src is None:
-            raise RuntimeError("yt-dlp завершился, но аудиофайл не найден")
+            raise RuntimeError("yt-dlp finished, but no audio file was found")
 
     tmp = wav.with_name("audio.wav.tmp")
     result = subprocess.run(
@@ -89,7 +89,7 @@ def fetch_audio(url: str, work_dir: Path) -> Path:
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError("ffmpeg не смог сконвертировать аудио: " + (result.stderr or "").strip()[-400:])
+        raise RuntimeError("ffmpeg failed to convert audio: " + (result.stderr or "").strip()[-400:])
     tmp.replace(wav)
     return wav
 
@@ -103,18 +103,18 @@ def run_download(task, *, allow_long: bool = False) -> dict:
         duration = info.get("duration") or 0
         if duration > MAX_DURATION and not allow_long:
             raise RuntimeError(
-                f"Видео длится {int(duration) // 60} мин — дольше часа; продолжите с --allow-long"
+                f"Video is {int(duration) // 60} min long — over the 1-hour limit; continue with --allow-long"
             )
-        print("    метаданы: уже получены, пропускаю")
+        print("    metadata: already fetched, skipping")
     else:
         info = fetch_metadata(task.url, info_file, allow_long=allow_long)
 
     if wav.exists() and wav.stat().st_size > 100_000:
-        print("    аудио: уже готово, пропускаю")
+        print("    audio: already ready, skipping")
     else:
-        print("    скачиваю аудио с YouTube...")
+        print("    downloading audio from YouTube...")
         fetch_audio(task.url, task.work_dir)
-        print("    аудио: готово (16 кГц моно WAV)")
+        print("    audio: ready (16 kHz mono WAV)")
 
     task.mark_done("download", artifact="audio.wav", duration=info.get("duration"))
     return info

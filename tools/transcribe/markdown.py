@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-TURN_MAX_SEGMENTS = 30  # разбивка на абзацы, если говорящие не разделены
+TURN_MAX_SEGMENTS = 30  # paragraph splitting when speakers are not diarized
 
 
 def _fmt_time(seconds: float) -> str:
@@ -15,7 +15,7 @@ def _fmt_time(seconds: float) -> str:
 
 
 def _segment_text(seg: dict, uncertain: float) -> str:
-    """Текст сегмента; слова с вероятностью ниже порога помечаются (?слово?)."""
+    """Segment text; words with a probability below the threshold are marked (?word?)."""
     words = seg.get("words") or []
     if not words:
         return (seg.get("text") or "").strip()
@@ -40,10 +40,10 @@ def _segment_chunk(seg: dict, base_lang: str | None, uncertain: float) -> str:
 
 
 def _build_turns(segments: list, speaker_ids: list | None) -> list:
-    """Группа сегментов → список абзацев (speaker_id | None, [сегменты]).
+    """Segment groups -> paragraphs (speaker_id | None, [segments]).
 
-    Говорящий-None (пауза, нет diarize) наследует предыдущего, чтобы
-    реплика с паузой внутри оставалась одним абзацем.
+    A speaker of None (pause, no diarization) inherits the previous speaker so
+    a turn with a pause inside stays a single paragraph.
     """
     if speaker_ids is None:
         speaker_ids = [None] * len(segments)
@@ -65,7 +65,7 @@ def _build_turns(segments: list, speaker_ids: list | None) -> list:
 def run_markdown(task, cfg: dict) -> str:
     seg_file = task.work_dir / "segments.json"
     if not seg_file.exists():
-        raise RuntimeError("нет segments.json — сначала выполните стадию transcribe")
+        raise RuntimeError("segments.json is missing — run the transcribe stage first")
     info_file = task.work_dir / "info.json"
     info = json.loads(info_file.read_text(encoding="utf-8")) if info_file.exists() else {}
     seg_data = json.loads(seg_file.read_text(encoding="utf-8"))
@@ -85,11 +85,11 @@ def run_markdown(task, cfg: dict) -> str:
     turns = _build_turns(segments, speaker_ids)
 
     lines = [f"# {info.get('title', task.video_id)}", info.get("webpage_url") or task.url, ""]
-    diar = f"{n_speakers} говорящих" if n_speakers else "выкл"
+    diar = f"{n_speakers} speakers" if n_speakers else "off"
     meta = (
-        f"Модель: {seg_data.get('model', '?')} · Язык: {base_lang or '?'} · "
-        f"Длительность: {_fmt_time(seg_data.get('duration', 0))} · "
-        f"Разделение говорящих: {diar}"
+        f"Model: {seg_data.get('model', '?')} · Language: {base_lang or '?'} · "
+        f"Duration: {_fmt_time(seg_data.get('duration', 0))} · "
+        f"Speaker diarization: {diar}"
     )
     lines.append(meta)
     lines.append("")
@@ -106,5 +106,5 @@ def run_markdown(task, cfg: dict) -> str:
     out_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
     task.mark_done("markdown", out=str(out_path))
-    print(f"    markdown: {out_path} ({len(turns)} абзацев)")
+    print(f"    markdown: {out_path} ({len(turns)} paragraphs)")
     return str(out_path)

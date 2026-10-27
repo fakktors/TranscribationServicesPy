@@ -44,9 +44,9 @@ def _assign_speakers(annotation, segments: list) -> tuple[list, list]:
             if ov > best_overlap:
                 best, best_overlap = name, ov
         if best is not None and best_overlap < 0.1 * dur:
-            best = None  # сегмент почти весь в молчании
+            best = None  # segment is almost entirely silence
         if best is None:
-            best = last  # наследуем предыдущего
+            best = last  # inherit the previous speaker
         else:
             last = best
         assigned.append(best)
@@ -67,7 +67,7 @@ def run_diarize(task, cfg: dict) -> dict | None:
     wav = task.work_dir / "audio.wav"
     seg_file = task.work_dir / "segments.json"
     if not seg_file.exists():
-        raise RuntimeError("нет segments.json — сначала выполните стадию transcribe")
+        raise RuntimeError("segments.json is missing — run the transcribe stage first")
     segments = json.loads(seg_file.read_text(encoding="utf-8"))["segments"]
 
     model_name = cfg.get("diarize_model", DIARIZE_MODEL)
@@ -75,28 +75,28 @@ def run_diarize(task, cfg: dict) -> dict | None:
     if token is None:
         task.mark_skipped(
             "diarize",
-            reason="нет HF-токена (HF_TOKEN); повторный запуск с токеном повторит стадию",
+            reason="no HF token (HF_TOKEN); a run with a token will retry this stage",
         )
-        print("    HF-токен не найден — разделение говорящих пропущено")
+        print("    HF token not found — speaker diarization skipped")
         return None
 
     t0 = time.time()
-    print(f"    загрузка pyannote ({model_name})...")
+    print(f"    loading pyannote ({model_name})...")
     try:
         from pyannote.audio import Pipeline
 
         pipeline = Pipeline.from_pretrained(model_name, token=token)
     except Exception as e:
-        task.mark_skipped("diarize", reason=f"модель недоступна: {str(e)[:200]}")
-        print(f"    pyannote-модель недоступна — разделение говорящих пропущено: {str(e)[:200]}")
+        task.mark_skipped("diarize", reason=f"model unavailable: {str(e)[:200]}")
+        print(f"    pyannote model unavailable — speaker diarization skipped: {str(e)[:200]}")
         return None
-    print(f"    модель загружена ({time.time() - t0:.0f} с)")
+    print(f"    model loaded ({time.time() - t0:.0f} s)")
 
     t0 = time.time()
-    print("    разделение говорящих (CPU, время ~ длительности аудио)...")
+    print("    diarizing (CPU, takes roughly as long as the audio)...")
     output = pipeline({"uri": task.video_id, "audio": str(wav)}, protocol="diarization")
     elapsed = time.time() - t0
-    print(f"    разделение завершено: {elapsed:.0f} с")
+    print(f"    diarization finished: {elapsed:.0f} s")
 
     assigned, speakers_info = _assign_speakers(output, segments)
     out = {
@@ -108,5 +108,5 @@ def run_diarize(task, cfg: dict) -> dict | None:
     out_file = task.work_dir / "speakers.json"
     out_file.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     task.mark_done("diarize", artifact="speakers.json", n_speakers=len(speakers_info))
-    print(f"    говорящих: {len(speakers_info)}")
+    print(f"    speakers: {len(speakers_info)}")
     return out

@@ -1,31 +1,25 @@
 #!/usr/bin/env python3
-"""Транскрипт YouTube-видео: конвейер download → transcribe → diarize → markdown.
+"""YouTube video -> transcript: download -> transcribe -> diarize -> markdown.
 
-Стадии (каждая сохраняется, повторный запуск продолжает с последней
-завершённой; рабочая директория — work/<video_id>/):
-    download   yt-dlp: аудио 16 кГц моно + метаданные видео
-    transcribe Whisper через MLX (mlx-whisper), переключения ru/en
-    diarize    pyannote/speaker-diarization-3.1 (нужен HF-токен;
-               без токена стадия пропускается)
-    markdown   transcripts/<video_id>.md
+Re-running resumes from the last completed stage (work/<video_id>/state.json).
 
-Использование:
+Usage:
     python tools/fetch_transcript.py <youtube_url> [language] [options]
 
-    language         ru / en (по умолчанию — автоопределение)
+    language   ru / en (default: auto-detect)
 
-Варианты:
-    --model NAME         Whisper-модель (по умолчанию mlx-community/whisper-large-v3-turbo)
-    --prompt "терм1, терм2"  словарь: передаётся модели как подсказка
-    --no-diarize         не делать разделение говорящих
-    --allow-long         разрешить видео длиннее часа
-    --stop STAGE         остановиться после стадии: download | transcribe | diarize | markdown
-    --reset              начать задачу заново (очистить work/<video_id>/)
-    --uncertain T        порог уверенности для пометки (?слово?) (по умолчанию 0.5)
+Options:
+    --model NAME        Whisper model (default mlx-community/whisper-large-v3-mlx)
+    --prompt "term1, term2"   vocabulary hint for the model
+    --no-diarize        skip speaker diarization
+    --allow-long        allow videos longer than 1 hour
+    --stop STAGE        stop after stage: download | transcribe | diarize | markdown
+    --reset             start over (clears work/<video_id>/)
+    --uncertain T       confidence threshold for (?word?) marks (default 0.5)
 
-Вывод:
-    Успех:  OK <путь к transcripts/<video_id>.md>
-    Ошибка: ERROR <стадия>: <сообщение>, код выхода 1
+Output:
+    Success: OK <path to transcripts/<video_id>.md>
+    Failure: ERROR <stage>: <message>, exit code 1
 """
 
 import argparse
@@ -47,19 +41,19 @@ DEFAULT_MODEL = "mlx-community/whisper-large-v3-mlx"
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
-        description="YouTube → транскрипт (Whisper MLX + pyannote)",
+        description="YouTube video -> transcript (Whisper MLX + pyannote)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__.split("Использование:")[-1],
+        epilog=__doc__.split("Usage:")[-1],
     )
-    ap.add_argument("url", help="ссылка на YouTube-видео")
-    ap.add_argument("language", nargs="?", default=None, help="язык: ru / en (иначе авто)")
-    ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Whisper-модель (по умолчанию {DEFAULT_MODEL})")
-    ap.add_argument("--prompt", default=None, help="словарь терминов через запятую (подсказка модели)")
-    ap.add_argument("--no-diarize", action="store_true", help="пропустить разделение говорящих")
-    ap.add_argument("--allow-long", action="store_true", help="разрешить видео длиннее часа")
-    ap.add_argument("--stop", choices=STAGES, default="markdown", help="остановиться после этой стадии")
-    ap.add_argument("--reset", action="store_true", help="начать задачу заново")
-    ap.add_argument("--uncertain", type=float, default=0.5, help="порог пометки (?слово?)")
+    ap.add_argument("url", help="YouTube video URL")
+    ap.add_argument("language", nargs="?", default=None, help="language: ru / en (default: auto)")
+    ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Whisper model (default {DEFAULT_MODEL})")
+    ap.add_argument("--prompt", default=None, help="vocabulary terms, comma-separated (model hint)")
+    ap.add_argument("--no-diarize", action="store_true", help="skip speaker diarization")
+    ap.add_argument("--allow-long", action="store_true", help="allow videos longer than 1 hour")
+    ap.add_argument("--stop", choices=STAGES, default="markdown", help="stop after this stage")
+    ap.add_argument("--reset", action="store_true", help="start the task over")
+    ap.add_argument("--uncertain", type=float, default=0.5, help="confidence threshold for (?word?) marks")
     return ap.parse_args()
 
 
@@ -68,7 +62,7 @@ def main() -> int:
 
     video_id = extract_video_id(args.url)
     task = Task(ROOT / "work", video_id, args.url, reset=args.reset)
-    print(f"Задача: {video_id} (рабочая директория {task.work_dir.relative_to(ROOT)}/)")
+    print(f"Task: {video_id} (work dir {task.work_dir.relative_to(ROOT)}/)")
 
     cfg = {
         "model": args.model,
@@ -95,14 +89,14 @@ def main() -> int:
         stage = task.stages[name]
 
         if task.validate_done(name):
-            print(f"  {name}: уже выполнено, пропускаю")
+            print(f"  {name}: already done, skipping")
         elif stage.status == "skipped":
             if name == "diarize" and resolve_token():
-                print(f"  {name}: была пропущена, HF-токен появился — пробую снова")
+                print(f"  {name}: was skipped, HF token is now available — retrying")
                 stage.status = "pending"
                 task.save()
             else:
-                print(f"  {name}: пропущена ({stage.detail.get('reason', '')})")
+                print(f"  {name}: skipped ({stage.detail.get('reason', '')})")
         else:
             print(f"  {name}:")
             try:
@@ -116,7 +110,7 @@ def main() -> int:
             if name == "markdown" and task.stages["markdown"].status == "done":
                 print(f"OK {task.stages['markdown'].detail.get('out')}")
             else:
-                print(f"Остановлено после стадии {name} (--stop)")
+                print(f"Stopped after stage {name} (--stop)")
             return 0
 
     return 0

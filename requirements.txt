@@ -1,14 +1,14 @@
-# Зависимости конвейера tools/fetch_transcript.py (зафиксированы по рабочей .venv, Python 3.14)
+# Pipeline dependencies for tools/fetch_transcript.py (pinned from the working .venv, Python 3.14)
 #
-# Системные зависимости (не ставятся через pip):
+# System dependencies (not installed via pip):
 #   ffmpeg   — brew install ffmpeg
-#   yt-dlp   — ставится вместе с yt-dlp ниже (запускается как python -m yt_dlp, если нет бинарника)
+#   yt-dlp   — comes with the yt-dlp package below (runs as python -m yt_dlp if no binary)
 #
-# Опционально (для стадии diarize): HF-токен (export HF_TOKEN=...) и разовое
-# согласование доступа к pyannote/speaker-diarization-3.1 на Hugging Face.
+# Optional (for the diarize stage): HF token (export HF_TOKEN=...) and one-time
+# access approval for pyannote/speaker-diarization-3.1 on Hugging Face.
 
-mlx-whisper==0.4.3      # Whisper через MLX (Apple Silicon); тянет mlx и mlx-metal
-pyannote-audio==4.0.7   # разделение говорящих; тянет torch и остальные pyannote-*
-yt-dlp==2026.10.21      # скачивание аудио и метаданных
-huggingface-hub==2.3.0  # чтение HF-токена
+mlx-whisper==0.4.3      # Whisper via MLX (Apple Silicon); pulls in mlx and mlx-metal
+pyannote-audio==4.0.7   # speaker diarization; pulls in torch and the other pyannote-*
+yt-dlp==2026.10.21      # downloading audio and metadata
+huggingface-hub==2.3.0  # reading the HF token
 numpy==2.5.4

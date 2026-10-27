@@ -38,7 +38,7 @@ class Stage:
 
 
 class Task:
-    """Состояние задачи: рабочая директория + state.json."""
+    """Task state: work dir + state.json."""
 
     def __init__(self, work_root: Path, video_id: str, url: str, *, reset: bool = False):
         self.video_id = video_id
@@ -56,7 +56,7 @@ class Task:
                     if name in self.stages:
                         self.stages[name] = Stage.from_dict(name, d)
             except (json.JSONDecodeError, OSError):
-                pass  # повреждённое состояние — начнём заново
+                pass  # corrupted state — start over
         self.save()
 
     @property
@@ -99,7 +99,7 @@ class Task:
         return self.stages[name].status == "done"
 
     def validate_done(self, name: str) -> bool:
-        """Стадия завершена и её артефакт (detail["artifact"]) действительно на месте."""
+        """Stage is done and its artifact (detail["artifact"]) is actually present."""
         stage = self.stages[name]
         if stage.status != "done":
             return False

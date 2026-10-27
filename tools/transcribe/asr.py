@@ -8,10 +8,10 @@ import numpy as np
 
 
 def _read_wav(path) -> np.ndarray:
-    """WAV 16 кГц моно s16 → float32 массив (стандартная библиотека, без scipy)."""
+    """16 kHz mono s16 WAV -> float32 array (stdlib only, no scipy)."""
     with wave.open(str(path), "rb") as w:
         if not (w.getframerate() == 16000 and w.getnchannels() == 1 and w.getsampwidth() == 2):
-            raise RuntimeError(f"{path}: ожидаю WAV 16 кГц моно s16 (пересоздайте аудио)")
+            raise RuntimeError(f"{path}: expected 16 kHz mono s16 WAV (regenerate the audio)")
         data = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
     return data.astype(np.float32) / 32768.0
 
@@ -24,7 +24,7 @@ def _rms(audio: np.ndarray, start: float, end: float, sr: int = 16000) -> float:
 
 
 def _get_model(model_name: str):
-    """Модель, использованная в transcribe() (кэш mlx-whisper) или новая загрузка."""
+    """The model used in transcribe() (mlx-whisper cache) or a fresh load."""
     from mlx_whisper.transcribe import ModelHolder
 
     model = getattr(ModelHolder, "model", None)
@@ -38,24 +38,24 @@ def _get_model(model_name: str):
 
 
 def _fix_language_switches(model, audio: np.ndarray, segments: list, global_lang: str, cfg: dict) -> int:
-    """Переключения языков: сегмент в «чужом» языке повторно декодируется.
+    """Language switching: segments in a "foreign" language are decoded again.
 
-    Whisper определяет язык один раз на весь файл (по первым 30 с). Для видео
-    с переключениями ru/en проверяем язык каждого достаточно длинного сегмента;
-    если он уверенно отличается от общего — декодируем фрагмент заново.
+    Whisper detects the language once per file (from the first 30 s). For videos
+    with ru/en switching, check the language of each sufficiently long segment;
+    if it confidently differs from the global one — re-decode that fragment.
     """
     import mlx.core as mx
 
     from mlx_whisper.audio import N_FRAMES, SAMPLE_RATE, log_mel_spectrogram, pad_or_trim
     from mlx_whisper.decoding import DecodingOptions
 
-    n_mels = model.dims.n_mels  # у разных моделей разный размер mel-спектрограммы
+    n_mels = model.dims.n_mels  # mel spectrogram size differs across models
     threshold = float(cfg.get("lang_switch_threshold", 0.6))
     n_switch = 0
     for seg in segments:
         dur = seg["end"] - seg["start"]
-        # слишком короткий, молчание или длиннее 30-секундного окна Whisper
-        # (pad_or_trim обрежет хвост и текст сегмента потеряется) — не гоняем
+        # too short, silence, or longer than Whisper's 30-second window
+        # (pad_or_trim would cut the tail and the segment text would be lost) — skip it
         if dur < 3.0 or dur > 30.0 or (seg.get("no_speech_prob") or 0.0) > 0.5:
             continue
         a0 = int(seg["start"] * SAMPLE_RATE)
@@ -73,7 +73,7 @@ def _fix_language_switches(model, audio: np.ndarray, segments: list, global_lang
             seg["text"] = " " + text
             seg["lang"] = top
             seg["switched"] = True
-            seg["words"] = []  # словесная уверенность после передекодирования не известна
+            seg["words"] = []  # word-level confidence is unknown after re-decoding
             n_switch += 1
     return n_switch
 
@@ -98,12 +98,12 @@ def run_asr(task, cfg: dict) -> dict:
 
     audio = _read_wav(wav)
     duration = len(audio) / 16000.0
-    print(f"    распознавание: {duration / 60:.1f} мин аудио, модель {model_name}...")
+    print(f"    recognizing: {duration / 60:.1f} min of audio, model {model_name}...")
     t0 = time.time()
     result = _transcribe(wav, cfg, model_name, lexicon_prompt)
     elapsed = time.time() - t0
     speed = duration / elapsed if elapsed > 0 else 0
-    print(f"    распознавание завершено: {elapsed:.0f} с (x{speed:.1f} от реального времени)")
+    print(f"    recognition finished: {elapsed:.0f} s (x{speed:.1f} of realtime)")
 
     global_lang = result["language"]
     segments = []
@@ -136,7 +136,7 @@ def run_asr(task, cfg: dict) -> dict:
         model = _get_model(model_name)
         n_switch = _fix_language_switches(model, audio, segments, global_lang, cfg)
         if n_switch:
-            print(f"    переключения языков: передекодировано сегментов: {n_switch}")
+            print(f"    language switches: segments re-decoded: {n_switch}")
 
     out = {
         "model": model_name,
