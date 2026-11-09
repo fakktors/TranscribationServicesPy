@@ -1,7 +1,29 @@
+# data produced by the pipeline
 work/
 transcripts/
-.claude/
+data/
+output/
+
+# local config / secrets
+.env
+cookies.txt
+
+# python
 .venv/
-.DS_Store
+venv/
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code: keep shared commands, ignore local settings
+.claude/*
+!.claude/commands/

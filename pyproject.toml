@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "transcribation"
+dynamic = ["version"]
+description = "YouTube video -> speaker-attributed Markdown transcript (Whisper + pyannote), as a CLI and an HTTP/MCP service for AI agents"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Evgenii Savin" }]
+keywords = ["youtube", "transcription", "whisper", "diarization", "mcp", "ai-agents", "hermes-agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "numpy>=1.26",
+    "yt-dlp[default]>=2025.11.12",  # [default] brings yt-dlp-ejs (YouTube JS challenges; also needs deno)
+    "huggingface-hub>=0.24",
+]
+
+[project.optional-dependencies]
+# Apple Silicon GPU backend
+mlx = ["mlx-whisper>=0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'"]
+# CPU / NVIDIA backend (Linux, Docker, Intel Macs)
+faster-whisper = ["faster-whisper>=1.1"]
+# speaker diarization (pulls in torch)
+diarize = ["pyannote-audio>=3.3"]
+# HTTP API + MCP endpoint
+server = ["fastapi>=0.115", "uvicorn[standard]>=0.30", "mcp>=2.3,<3"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6", "pre-commit>=3.7"]
+
+[project.scripts]
+transcribation = "transcribation.cli:main"
+transcribation-server = "transcribation.server.app:main"
+
+[project.urls]
+Homepage = "https://github.com/fakktors/TranscribationServicesPy"
+Issues = "https://github.com/fakktors/TranscribationServicesPy/issues"
+
+[tool.hatch.version]
+path = "src/transcribation/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/transcribation"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501", "B905", "SIM103", "SIM108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["transcribation"]
