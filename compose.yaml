@@ -1,0 +1,39 @@
+# Always-on transcription service for AI agents (Hermes Agent, Claude, scripts).
+#
+#   cp .env.example .env        # set TRANSCRIBE_API_TOKEN (and HF_TOKEN for speakers)
+#   docker compose up -d --build
+#   curl http://127.0.0.1:8000/healthz
+#
+# REST API: http://<host>:8000/v1/transcripts   MCP: http://<host>:8000/mcp
+name: transcribation
+
+services:
+  transcribation:
+    build:
+      context: .
+      args:
+        WITH_DIARIZATION: "${WITH_DIARIZATION:-true}"
+    image: ghcr.io/fakktors/transcribationservicespy:${TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      # Loopback only by default: put a reverse proxy (Caddy/nginx/Tailscale) in front,
+      # or set BIND_ADDR=0.0.0.0 in .env — and then TRANSCRIBE_API_TOKEN is a must.
+      - "${BIND_ADDR:-127.0.0.1}:${PORT:-8000}:8000"
+    volumes:
+      - data:/data # work/ (intermediate files) + transcripts/ (results)
+      - hf-cache:/cache/huggingface # downloaded Whisper / pyannote models
+      # Optional YouTube cookies (if the server IP gets "Sign in to confirm you're not a bot"):
+      # - ./cookies.txt:/run/secrets/cookies.txt:ro   + TRANSCRIBE_YTDLP_COOKIES=/run/secrets/cookies.txt
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  data:
+  hf-cache:
