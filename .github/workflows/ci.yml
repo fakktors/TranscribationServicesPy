@@ -34,7 +34,7 @@ jobs:
       - name: Build slim image (no diarization) and smoke-test it
         run: |
           docker build --build-arg WITH_DIARIZATION=false -t transcribation:ci .
-          docker run -d --name t -p 8000:8000 transcribation:ci
+          docker run -d --name smoke -p 8000:8000 transcribation:ci
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:8000/healthz && break; sleep 2; done
           curl -fs http://127.0.0.1:8000/healthz
-          docker logs t
+          docker logs smoke
